@@ -24,7 +24,7 @@ class UserOut(User):
 # Kubernetes will poll this endpoint to decide if the pod is alive/ready.
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "okay"}
 
 
 # --- Create a user ---
