@@ -1,49 +1,49 @@
-# DevOps VAP Project — Self-Healing, Auto-Scaling Kubernetes Platform
+DevOps VAP Project — Self-Healing, Auto-Scaling Kubernetes Platform
 
 A production-style microservices platform demonstrating the full CI/CD → GitOps → Kubernetes → Observability lifecycle, built for the ViMEET DevOps VAP (InLustro), Phase 1.
 
-## What This Demonstrates
+What This Demonstrates
 
-- **Microservices architecture** — two independent FastAPI services communicating over HTTP
-- **Full CI/CD lifecycle** — automated testing, Docker image builds, and registry pushes on every commit
-- **GitOps deployment** — ArgoCD continuously syncs the cluster to match what's declared in this repo
-- **Self-healing infrastructure** — Kubernetes automatically detects and recovers failed pods
-- **Auto-scaling** — a Horizontal Pod Autoscaler reacts to real-time CPU load
-- **Observability** — live Prometheus + Grafana dashboards for every service
+Microservices architecture — two independent FastAPI services communicating over HTTP
+Full CI/CD lifecycle — automated testing, Docker image builds, and registry pushes on every commit
+GitOps deployment — ArgoCD continuously syncs the cluster to match what's declared in this repo
+Self-healing infrastructure — Kubernetes automatically detects and recovers failed pods
+Auto-scaling — a Horizontal Pod Autoscaler reacts to real-time CPU load
+Observability — live Prometheus + Grafana dashboards for every service
 
-## Architecture
+Architecture
 
-```
+
 Developer pushes code to GitHub
-        │
-        ▼
+
+
 GitHub Actions (CI/CD)
    ├─ Install dependencies
    ├─ Run import/sanity checks
    ├─ Build Docker image (users-service, orders-service)
    └─ Push image to Docker Hub
-        │
-        ▼
+
+
 ArgoCD (GitOps)
    └─ Detects repo changes, syncs cluster to match
-        │
-        ▼
+
+
 Kubernetes Cluster (kind — local)
    ├─ users-service (Deployment, 2 replicas, Service)
    ├─ orders-service (Deployment, 2–5 replicas via HPA, Service)
    ├─ Liveness & readiness probes on /health
    └─ Horizontal Pod Autoscaler (CPU-based, 50% target)
-        │
-        ▼
+
+
 Monitoring
    ├─ Prometheus — scrapes live CPU/memory per pod
    └─ Grafana — dashboards for real-time visualization
-```
 
-## Services
 
-| Service | Port | Responsibility |
-|---|---|---|
+Services
+
+Service Port Responsibility 
+
 | `users-service` | 8001 | CRUD API for users (in-memory store) |
 | `orders-service` | 8002 | Creates orders; validates the user exists by calling `users-service` over HTTP |
 

@@ -28,11 +28,11 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Run basic import check
+      - name: Run tests
         working-directory: ${{ matrix.service }}
         run: |
-          python -c "import main; print('${{ matrix.service }} imports successfully')"
-        # This is a lightweight stand-in for real tests — proves the app at least
+          pytest -v
+        #This is a lightweight stand-in for real tests — proves the app at least
         # loads without syntax/import errors before we bother building an image
 
       - name: Log in to Docker Hub
