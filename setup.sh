@@ -39,6 +39,7 @@ done
 
 echo "==> 6/6 Prometheus and Grafana"
 kubectl apply -f monitoring/prometheus.yaml   # creates the monitoring namespace, so it goes first
+kubectl apply -f monitoring/grafana-dashboard.yaml
 kubectl apply -f monitoring/grafana.yaml
 kubectl rollout status deployment/prometheus -n monitoring --timeout=180s
 kubectl rollout status deployment/grafana -n monitoring --timeout=180s
