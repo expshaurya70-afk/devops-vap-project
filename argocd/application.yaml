@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: devops-vap-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/expshaurya70-afk/devops-vap-project.git
+    targetRevision: HEAD
+    path: k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: orders-service
+      jsonPointers:
+        - /spec/replicas
