@@ -250,3 +250,49 @@ cp .env.example .env
 
 ---
 Built as part of the ViMEET DevOps VAP (InLustro) program, 2026.
+
+## Phase 2: Autonomous DevOps Agent
+
+The code in agent/ onboards a repository it has never seen before, with no human writing a Dockerfile or Kubernetes manifest by hand.
+
+Given a GitHub repo URL, the agent:
+
+1. Clones the repo and analyzes its structure to detect the language, framework, entry point, dependency file, and likely port, by reading files like requirements.txt and package.json rather than assuming.
+2. Sends that analysis to an LLM (Groq, Llama 3 / GPT-OSS models) and asks it to generate a Dockerfile.
+3. Actually builds that Dockerfile, then runs the resulting image and checks it stays up rather than exiting immediately — a build can succeed while the app itself never starts a server, and this step catches exactly that.
+4. If the build or the runtime check fails, the error is fed back to the LLM, which gets up to three attempts to produce a working Dockerfile.
+5. Generates a Kubernetes Deployment and Service from the same analysis, applies it to the cluster, and waits for the pod to reach Running — again with up to three attempts, each one informed by the previous failure's kubectl describe and logs output.
+6. Prints a summary report: what stack it detected, how many attempts each stage took, and the exact commands to check the result yourself.
+
+### Proven, not assumed
+
+Run against render-examples/flask-hello-world, a minimal Flask app with no Dockerfile and a route handler that never calls app.run():
+
+The agent's first Dockerfile attempt built successfully but the container exited immediately, since nothing in the source actually starts a server. The runtime check caught this, fed the failure back to the LLM, and the second attempt switched from python app.py to flask run --host=0.0.0.0 --port=5000, which starts the server through Flask's own CLI runner instead of relying on code that isn't there. That image builds, stays running, and serves real HTTP requests.
+
+The Kubernetes manifest deployed successfully on the first attempt. Testing it directly:
+
+kubectl port-forward svc/demo-app 8888:80
+curl http://localhost:8888/
+Hello, World!
+
+
+An earlier version of the agent printed the wrong port-forward command in its final summary, assuming the Service port always matched the app's container port. The LLM had actually generated port: 80 for the Service (a reasonable default), which the agent's hardcoded hint didn't account for. This was caught by running the exact command the agent told me to run, not just checking that the pod said Running. The fix queries the real Service port from the cluster after deployment instead of assuming it.
+
+### Scope and limitations
+
+This supports single-service Python (Flask, FastAPI, Django) and Node repos with the application at the repository root. A monorepo with multiple services in subfolders, such as this project's own repo, is correctly detected as unsupported rather than silently guessed at incorrectly.
+
+Not built in this phase: Terraform generation, a generated CI/CD workflow file, and an automated "detect a failure and apply a fix" loop for a deployed app. That last one is close to what ai-monitor already does in Phase 1 for this project's own services — extending that same approach to apply to an arbitrary onboarded app is the natural next step.
+
+### Running it yourself
+
+```bash
+cd agent
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+# edit .env with your real GROQ_API_KEY
+python agent.py <github-repo-url> <app-name>
+```
