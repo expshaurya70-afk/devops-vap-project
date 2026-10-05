@@ -113,114 +113,39 @@ AI monitoring: deleting a pod is detected within 15 seconds, the anomaly is sent
 
 ## Cold-Start Guide
 
-Use this after closing all terminals or restarting your laptop. This project runs entirely locally on a kind cluster inside Docker Desktop/WSL2. Docker containers restart automatically, but every kubectl port-forward and the ai-monitor script need to be started fresh each time.
+The full step-by-step guide for starting this project, whether resuming on the same laptop or setting it up on a machine that has never seen it before, now lives in [START.md](START.md) rather than here, so there is one accurate copy instead of two that can drift apart.
 
-### Terminal 1: verify the cluster is alive
-
-```bash
-docker ps
-```
-
-You should see devops-vap-control-plane with status Up. If Docker Desktop isn't running yet, open it from Windows and wait 30 to 60 seconds, then retry.
-
-```bash
-sleep 30
-kubectl get pods -A
-```
-
-Confirm all pods across the default, argocd, monitoring, and kube-system namespaces show Running. If some show errors right after boot, wait another 30 to 60 seconds and check again — this is normal.
-
-### Terminal 2: Grafana dashboard
-
-```bash
-kubectl port-forward -n monitoring svc/grafana 3000:3000
-```
-
-Leave this running. Open localhost:3000 in your browser (login admin / admin123, or check your notes if the password was changed).
-
-### Terminal 3: Prometheus
-
-```bash
-kubectl port-forward -n monitoring svc/prometheus 9090:9090
-```
-
-Leave this running. Needed by both Grafana and the AI monitor.
-
-### Terminal 4: free for one-off commands
-
-No standing command here. Use it for kubectl get pods, kubectl delete pod, and similar checks.
-
-### Terminal 5: orders-service (only for load-testing auto-scaling)
-
-```bash
-kubectl port-forward svc/orders-service 8002:8002
-```
-
-### Terminal 6: ArgoCD (only when demonstrating GitOps)
-
-```bash
-kubectl port-forward svc/argocd-server -n argocd 8080:443
-```
-
-Open https://localhost:8080 and click through the self-signed certificate warning. Username is admin. Get the password with:
-
-```bash
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
-```
-
-### Terminal 7: AI monitoring layer
-
-```bash
-cd ~/devops-vap/ai-monitor
-source venv/bin/activate
-python monitor.py
-```
-
-Leave this running. It polls every 15 seconds and posts to Discord automatically when it detects a pod restart, a pod replacement, or elevated CPU.
-
-### Quick smoke test
-
-Once everything above is running, in Terminal 4:
-
-```bash
-kubectl get pods
-kubectl delete pod <any-orders-service-pod-name>
-```
-
-Within about 15 to 30 seconds you should see the pod replaced, a new line appear on the Grafana dashboard, and an alert posted to Discord with an AI-generated explanation.
-
-If any kubectl port-forward fails with "address already in use," an old process is still holding that port from a previous session. Find and kill it:
-
-```bash
-lsof -i :<port-number>
-kill -9 <PID>
-```
-
----
+Short version: on the same laptop, open separate terminals for `kubectl port-forward` to Grafana, Prometheus, and optionally ArgoCD, then run `python monitor.py` inside `ai-monitor/`. On a fresh machine, run `./install-tools.sh` then `./setup.sh`, optionally `./install-argocd.sh`, then set up `ai-monitor/` and, for Phase 2, `agent/`. See START.md for the exact commands and the order they need to run in.
 
 ## Challenges Faced and Lessons Learned
 
 Building this on a resource-constrained laptop with 8GB of RAM surfaced real, practical DevOps problems, and debugging them turned out to be as instructive as building the happy path.
 
-Running the full kube-prometheus-stack Helm chart, which includes Prometheus, Grafana, Alertmanager, and the Prometheus Operator, alongside ArgoCD's seven pods and the application pods pushed the node past 78 percent memory usage. Eventually the Kubernetes control plane itself, specifically kube-scheduler and kube-controller-manager, started crashing with TLS handshake timeout errors. The fix was swapping the heavy Helm-based monitoring stack for a lightweight, hand-written Prometheus and Grafana deployment with no operator and no Alertmanager, which roughly halved the total pod count.
+Running the full kube-prometheus-stack Helm chart, which includes Prometheus, Grafana, Alertmanager, and the Prometheus Operator, alongside ArgoCD's seven pods and the application pods pushed the node past 78 percent memory usage. Eventually the Kubernetes control plane itself, specifically kube-scheduler and kube-controller-manager, started crashing with TLS handshake timeout errors. The fix was swapping the heavy Helm-based monitoring stack for a lightweight, hand-written Prometheus and Grafana deployment with no operator and no Alertmanager, which roughly halved the total pod count, and later capping WSL2's own memory via .wslconfig so Windows always keeps enough headroom to stay responsive.
 
-That lightweight setup was missing kube-state-metrics, which turned out to be the only component that exposes Kubernetes-level facts like pod restart counts. Plain Prometheus only sees raw container CPU and memory, not the fact that a pod restarted. This was diagnosed by querying Prometheus directly and getting empty results back, and fixed by installing just that one component through its official standalone manifests, then manually adding a scrape job to Prometheus's config since this setup has no auto-discovery.
+That lightweight setup was missing kube-state-metrics, which turned out to be the only component that exposes Kubernetes-level facts like pod restart counts. Plain Prometheus only sees raw container CPU and memory, not the fact that a pod restarted. This was diagnosed by querying Prometheus directly and getting empty results back, and fixed by installing just that one component through its official standalone manifests, then manually adding a scrape job to Prometheus's config since this setup has no auto-discovery. The same component went missing again after a later full cluster rebuild, which is exactly why it is now captured as a real YAML file under monitoring/ and installed automatically by setup.sh instead of being a one-off manual fix that only lives in shell history.
 
 A more subtle bug: kubectl delete pod doesn't restart a container, it replaces the whole pod with a new name. The first version of the AI anomaly detector only checked whether the restart count had gone up for an existing pod name, which missed this case entirely. The fix was to also detect when a pod name that didn't exist in the previous check suddenly appears.
 
-After several Docker and WSL restarts, old kubectl port-forward processes kept holding onto ports even though their terminal windows were long gone, causing "address already in use" errors. This was diagnosed with lsof -i :<port> and resolved by killing the specific orphaned process.
+After several Docker and WSL restarts, old kubectl port-forward processes kept holding onto ports even though their terminal windows were long gone, causing "address already in use" errors. This was diagnosed with lsof -i :<port> and resolved by killing the specific orphaned process. The same restarts occasionally crashed the Kubernetes control plane itself with TLS handshake timeouts under load; the fastest reliable fix turned out to be docker restart devops-vap-control-plane rather than troubleshooting the control plane pods individually.
 
-Google's Gemini API turned out to be mid-rollout of a new auth key format with an AQ. prefix that, at least at the time of this project, returns a 401 ACCESS_TOKEN_TYPE_UNSUPPORTED error for many accounts no matter how the request is authenticated. This is a known, currently open issue on Google's side rather than a bug in this code. The fix was switching to Groq, which has a stable, simple API key flow and a genuinely free tier.
+Google's Gemini API turned out to be mid-rollout of a new auth key format with an AQ. prefix that, at least at the time of this project, returns a 401 ACCESS_TOKEN_TYPE_UNSUPPORTED error for many accounts no matter how the request is authenticated. This is a known, currently open issue on Google's side rather than a bug in this code. The fix was switching to Groq, which has a stable, simple API key flow and a genuinely free tier — though even there, the actual current model name had to be looked up directly from Groq's own /v1/models endpoint rather than assumed, since model availability changes over time.
 
-At one point during debugging, a GitHub token and a Discord webhook URL were briefly pasted somewhere they shouldn't have been. Both were revoked and regenerated immediately. Going forward, secrets get verified with commands that only reveal a length or a first few characters, never the full value, and .env files get edited directly rather than through shell one-liners that are easy to get subtly wrong.
+Secret hygiene turned out to need active discipline, not just a .gitignore. Across this project a GitHub token and a Discord webhook URL were each exposed more than once, mid-debugging, by pasting full file contents into chat instead of checking only a length or first few characters. Each time, the exposed credential was revoked and regenerated immediately rather than left in place. The lesson that stuck: verify secrets with commands like grep -o '^SOME_KEY=.\{0,8\}' .env or wc -c, and edit .env files directly rather than through shell one-liners (export $(grep ...), templated sed commands) that are easy to get subtly wrong without noticing.
 
-Finally, editing Kubernetes config with kubectl edit, which opens vi or nano, turned out to be risky under time pressure without being fluent in the editor. Switching to writing config as a full YAML file and applying it with kubectl apply -f was more reliable, since it's scriptable and reviewable rather than requiring careful live interactive editing.
+Editing Kubernetes config with kubectl edit, which opens vi or nano, turned out to be risky under time pressure without being fluent in the editor. Switching to writing config as a full YAML file and applying it with kubectl apply -f was more reliable, since it's scriptable and reviewable rather than requiring careful live interactive editing.
+
+Reproducibility needed to be built, not assumed. An early attempt to give this project a portable GitHub Codespaces setup via a .devcontainer config failed twice: first because the Python base image's bundled apt source for Yarn had an unreachable signing key, and again, after switching to a plain Ubuntu base image, because the Docker-in-Docker feature itself failed to install in that environment. Rather than keep fighting devcontainer internals, the simpler and more reliable fix was a plain install-tools.sh script that checks for and installs kind, kubectl, and helm on whatever machine it's run on, relying only on Docker already being present — which Codespaces' default image provides without any extra configuration.
+
+Agent-generated output needs to be verified by actually using it, not just checked for a success status. Phase 2's Dockerfile generator initially looked correct because docker build exited 0, but the generated app had no server start call at all, so the container built fine and then exited in under a second — caught only by actually running the image and checking it stayed up, not by trusting the build result alone. The same lesson repeated at the Kubernetes layer: the agent's own final summary printed a kubectl port-forward command using the wrong port, because it assumed the generated Service's port always matched the container's port instead of reading the Service's real port back from the cluster. Both bugs were found by running the exact commands the tooling told me to run, rather than stopping at "it reported success."
 
 ## Roadmap and Next Steps
 
 The AI-powered anomaly detection layer described in the original project plan is done — see ai-monitor/monitor.py.
 
-The next phase is the Autonomous DevOps Agent: extending this pipeline into a general-purpose agent that can onboard a repository it hasn't seen before, analyze its stack, generate a tailored Dockerfile, CI/CD workflow, and Kubernetes manifests, then deploy and monitor it. This turns the project from infrastructure for one app into a tool that deploys apps.
+The Autonomous DevOps Agent described in the original project plan is also done — see the Phase 2 section below and agent/. It onboards a repository it hasn't seen before, analyzes its stack, generates a tailored Dockerfile and Kubernetes manifests with its own build-and-retry loop, then deploys it, turning the project from infrastructure for one app into a tool that deploys apps.
+
+What's left: Terraform generation, a generated CI/CD workflow file for the onboarded app, and extending ai-monitor's live anomaly-detection pattern to watch and help recover apps the agent deploys, not just this project's own two services.
 
 ## Running Locally From a Fresh Clone
 
