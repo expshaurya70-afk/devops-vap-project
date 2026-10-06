@@ -29,7 +29,7 @@ class OrderOut(Order):
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "okk"}
 
 
 @app.post("/orders", response_model=OrderOut, status_code=201)
