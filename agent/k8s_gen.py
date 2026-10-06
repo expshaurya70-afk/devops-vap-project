@@ -33,7 +33,9 @@ def build_prompt(analysis, image_tag, app_name, previous_manifest=None, apply_er
         "fences, no commentary. Use imagePullPolicy: Never since this image only exists "
         "locally in a kind cluster, not in any registry. Use 1 replica. Separate the "
         "Deployment and Service with '---'. Keep resource requests small "
-        "(cpu: 50m, memory: 64Mi) since this is a demo on a small machine."
+        "(cpu: 50m, memory: 64Mi) since this is a demo on a small machine. "
+        "Add the label monitored: \"true\" (alongside the app label) to the Deployment's "
+        "pod template metadata.labels, so an external monitoring tool can find it."
     )
     if previous_manifest and apply_error:
         base += (

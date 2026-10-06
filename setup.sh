@@ -37,6 +37,17 @@ for f in cluster-role-binding cluster-role deployment service-account service; d
   kubectl apply -f "$BASE/$f.yaml"
 done
 
+# By default kube-state-metrics does not expose pod labels at all. The AI monitor
+# (and the Phase 2 agent's deployed apps) rely on seeing the "monitored" label to
+# find apps beyond the two core services, so allowlist just that one label.
+kubectl rollout status deployment/kube-state-metrics -n kube-system --timeout=60s
+if ! kubectl get deployment kube-state-metrics -n kube-system \
+     -o jsonpath='{.spec.template.spec.containers[0].args}' | grep -q "metric-labels-allowlist"; then
+  kubectl patch deployment kube-state-metrics -n kube-system --type=json \
+    -p='[{"op":"add","path":"/spec/template/spec/containers/0/args","value":["--metric-labels-allowlist=pods=[monitored]"]}]'
+  kubectl rollout status deployment/kube-state-metrics -n kube-system --timeout=60s
+fi
+
 echo "==> 6/6 Prometheus and Grafana"
 kubectl apply -f monitoring/prometheus.yaml   # creates the monitoring namespace, so it goes first
 kubectl apply -f monitoring/grafana-dashboard.yaml

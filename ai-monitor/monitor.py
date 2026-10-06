@@ -23,18 +23,46 @@ def query_prometheus(promql):
     return response.json()["data"]["result"]
 
 
+# The two services this project always runs, plus kube_pod_labels is used to find
+# anything else — such as an app the Phase 2 agent deployed — that was tagged
+# monitored="true" at deploy time.
+CORE_SERVICES = {"users-service", "orders-service"}
+
+
+def get_monitored_pod_names():
+    """Pod names labeled monitored="true" (e.g. apps the agent deployed), via kube-state-metrics."""
+    results = query_prometheus('kube_pod_labels{label_monitored="true"}')
+    return {r["metric"]["pod"] for r in results}
+
+
 def get_pod_restarts():
-    """Returns {pod_name: restart_count} for pods in the default namespace."""
-    results = query_prometheus('kube_pod_container_status_restarts_total{namespace="default"}')
-    return {r["metric"]["pod"]: float(r["value"][1]) for r in results}
+    """Returns {pod_name: restart_count} across all namespaces, for core services
+    plus anything labeled monitored="true"."""
+    results = query_prometheus('kube_pod_container_status_restarts_total')
+    monitored_extra = get_monitored_pod_names()
+    out = {}
+    for r in results:
+        pod = r["metric"]["pod"]
+        container = r["metric"].get("container", "")
+        if container in CORE_SERVICES or pod in monitored_extra:
+            out[pod] = float(r["value"][1])
+    return out
 
 
 def get_pod_cpu():
-    """Returns {pod_name: cpu_cores_used} for pods in the default namespace."""
+    """Returns {pod_name: cpu_cores_used} across all namespaces, for core services
+    plus anything labeled monitored="true"."""
+    monitored_extra = get_monitored_pod_names()
     results = query_prometheus(
-        'sum(rate(container_cpu_usage_seconds_total{namespace="default"}[2m])) by (pod)'
+        'sum(rate(container_cpu_usage_seconds_total{container!=""}[2m])) by (pod, container)'
     )
-    return {r["metric"]["pod"]: float(r["value"][1]) for r in results}
+    out = {}
+    for r in results:
+        pod = r["metric"]["pod"]
+        container = r["metric"].get("container", "")
+        if container in CORE_SERVICES or pod in monitored_extra:
+            out[pod] = float(r["value"][1])
+    return out
 
 
 def ask_ai_for_explanation(anomaly_description):
