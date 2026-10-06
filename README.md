@@ -145,7 +145,7 @@ The AI-powered anomaly detection layer described in the original project plan is
 
 The Autonomous DevOps Agent described in the original project plan is also done — see the Phase 2 section below and agent/. It onboards a repository it hasn't seen before, analyzes its stack, generates a tailored Dockerfile and Kubernetes manifests with its own build-and-retry loop, then deploys it, turning the project from infrastructure for one app into a tool that deploys apps.
 
-What's left: Terraform generation, a generated CI/CD workflow file for the onboarded app, and extending ai-monitor's live anomaly-detection pattern to watch and help recover apps the agent deploys, not just this project's own two services.
+What's left: Terraform generation and a generated CI/CD workflow file for the onboarded app. ai-monitor's live anomaly-detection pattern has been extended to watch apps the agent deploys, not just this project's own two services — see the Phase 2 section below for how.
 
 ## Running Locally From a Fresh Clone
 
@@ -204,11 +204,17 @@ Hello, World!
 
 An earlier version of the agent printed the wrong port-forward command in its final summary, assuming the Service port always matched the app's container port. The LLM had actually generated port: 80 for the Service (a reasonable default), which the agent's hardcoded hint didn't account for. This was caught by running the exact command the agent told me to run, not just checking that the pod said Running. The fix queries the real Service port from the cluster after deployment instead of assuming it.
 
+### Connected to Phase 1's AI monitor
+
+Every Deployment the agent generates is tagged with a `monitored: "true"` label. The Phase 1 AI monitor (`ai-monitor/monitor.py`) watches for that label in addition to its two original services, so any app the agent deploys is automatically picked up for restart and CPU anomaly detection, with no app name ever hardcoded anywhere.
+
+This required one fix to the cluster setup: `kube-state-metrics` does not expose pod labels by default, only an explicit allowlist of them. `setup.sh` now passes `--metric-labels-allowlist=pods=[monitored]` to it so this works out of the box on a fresh machine, not just as a one-off manual patch.
+
 ### Scope and limitations
 
 This supports single-service Python (Flask, FastAPI, Django) and Node repos with the application at the repository root. A monorepo with multiple services in subfolders, such as this project's own repo, is correctly detected as unsupported rather than silently guessed at incorrectly.
 
-Not built in this phase: Terraform generation, a generated CI/CD workflow file, and an automated "detect a failure and apply a fix" loop for a deployed app. That last one is close to what ai-monitor already does in Phase 1 for this project's own services — extending that same approach to apply to an arbitrary onboarded app is the natural next step.
+Not built: Terraform generation, and a generated CI/CD workflow file for an onboarded app. The "detect a failure and apply a fix" loop now exists for agent-deployed apps through the AI monitor connection above, but it currently explains and alerts rather than automatically applying a fix — a human still acts on the Discord message.
 
 ### Running it yourself
 

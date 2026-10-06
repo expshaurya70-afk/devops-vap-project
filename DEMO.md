@@ -163,3 +163,39 @@ Give it 60-90 seconds after that before running anything else.
 ## What to say if asked what's not built yet
 
 Terraform generation and a generated CI/CD workflow for Phase 2's onboarded apps aren't built. Extending the Phase 1 AI-monitor pattern to watch apps the agent deploys, not just this project's own two services, is the planned next step — see the Roadmap section in README.md.
+
+## Part 7: The AI monitor watching an agent-deployed app
+
+This connects Part 5 and Part 6: the AI monitor isn't limited to the two original services, it automatically watches anything the agent deploys.
+
+Make sure `ai-monitor/monitor.py` is running (same as Part 5). Then run the agent against a small repo, same as Part 6:
+
+```bash
+cd ~/devops-vap/agent
+source venv/bin/activate
+python agent.py https://github.com/render-examples/flask-hello-world watch-demo
+```
+
+While it's deploying, point out that the generated Deployment includes a `monitored: "true"` label — that's what makes it visible to the AI monitor without any hardcoded app name.
+
+Once it's deployed, confirm it over in the monitor's terminal — within 15 seconds its baseline restart counts should include a `watch-demo-...` pod alongside `users-service` and `orders-service`, picked up purely through the label.
+
+Trigger an anomaly on it specifically:
+
+```bash
+kubectl get pods -l app=watch-demo
+kubectl delete pod <the-watch-demo-pod-name>
+```
+
+Within the next cycle, the monitor detects the replacement pod, calls Groq, and posts to Discord — and the explanation will reference `watch-demo` by name, proving it's reasoning about this specific app, not a hardcoded message.
+
+Clean up afterward:
+
+```bash
+kubectl delete deployment,service watch-demo
+docker rmi watch-demo:v1
+```
+
+### A real bug found while building this
+
+`kube-state-metrics` does not expose pod labels by default — only the labels you explicitly allow. The fix was adding `--metric-labels-allowlist=pods=[monitored]` to its deployment args, both live on the cluster and in `setup.sh`, so a fresh machine gets this working out of the box rather than silently missing it. This was only caught by querying Prometheus directly and noticing `kube_pod_labels` came back completely empty — worth mentioning if asked how the label-based watching was verified, not just assumed to work.
