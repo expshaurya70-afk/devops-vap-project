@@ -1,3 +1,4 @@
+#Demo
 # DevOps VAP Project — Self-Healing, Auto-Scaling Kubernetes Platform with AI Monitoring
 
 A production-style microservices platform demonstrating the full CI/CD → GitOps → Kubernetes → Observability → AI-powered monitoring lifecycle, built for the ViMEET DevOps VAP (InLustro), Phase 1.
