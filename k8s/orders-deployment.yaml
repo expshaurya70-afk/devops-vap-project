@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: orders-service
 spec:
-  replicas: 2  # demo touch  # demo touch
+  replicas: 2  # demo touch  # demo touch  # demo touch
   selector:
     matchLabels:
       app: orders-service
