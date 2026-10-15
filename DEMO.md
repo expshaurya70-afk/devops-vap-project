@@ -68,26 +68,35 @@ If ArgoCD isn't running, start it first: `./install-argocd.sh` (takes a few minu
 
 Open `kubectl port-forward svc/argocd-server -n argocd 8080:443` in a spare terminal, visit `https://localhost:8080`, log in as admin.
 
-Make a small change in the repo's k8s folder, push it, and show ArgoCD detect the drift on its own:
+Change users-service from 2 to 3 replicas in Git and show ArgoCD pick it up. This uses users-service on purpose: orders-service has its replica count managed by the autoscaler, so ArgoCD deliberately ignores that field and a change there would show no drift.
 
 ```bash
 cd ~/devops-vap
-sed -i 's/replicas: 2/replicas: 2  # demo touch/' k8s/orders-deployment.yaml
-git add k8s/orders-deployment.yaml
-git commit -m "Demo: touch orders-deployment for ArgoCD"
+sed -i 's/^  replicas: 2 /  replicas: 3 /' k8s/users-deployment.yaml
+grep -n "replicas" k8s/users-deployment.yaml
+git add k8s/users-deployment.yaml
+git commit -m "Demo: scale users-service to 3 replicas"
 git push
 ```
 
-Within ArgoCD's polling interval (a few minutes) the app flips to OutOfSync on its own. Click Sync, Synchronize. This is the "I changed a file on GitHub and my cluster updated itself" moment.
-
-Revert the comment afterward so the file stays clean:
+ArgoCD checks the repo about every three minutes. To skip the wait, click the Refresh button on the devops-vap-app card. The app flips to OutOfSync on its own. Click Sync, then Synchronize, and a third users-service pod appears:
 
 ```bash
-sed -i 's/replicas: 2  # demo touch/replicas: 2/' k8s/orders-deployment.yaml
-git add k8s/orders-deployment.yaml
-git commit -m "Revert demo touch"
+kubectl get pods -l app=users-service
+```
+
+This is the "I changed a number in a file on GitHub and my cluster changed itself" moment.
+
+Revert it afterward so the repo is back to normal:
+
+```bash
+sed -i 's/^  replicas: 3 /  replicas: 2 /' k8s/users-deployment.yaml
+git add k8s/users-deployment.yaml
+git commit -m "Revert demo: users-service back to 2 replicas"
 git push
 ```
+
+Sync once more in ArgoCD and the third pod goes away.
 
 ## Part 5: AI-powered monitoring
 
