@@ -72,7 +72,7 @@ Change users-service from 2 to 3 replicas in Git and show ArgoCD pick it up. Thi
 
 ```bash
 cd ~/devops-vap
-sed -i 's/^  replicas: 2 /  replicas: 3 /' k8s/users-deployment.yaml
+sed -i 's/replicas: 2/replicas: 3/' k8s/users-deployment.yaml
 grep -n "replicas" k8s/users-deployment.yaml
 git add k8s/users-deployment.yaml
 git commit -m "Demo: scale users-service to 3 replicas"
@@ -90,7 +90,7 @@ This is the "I changed a number in a file on GitHub and my cluster changed itsel
 Revert it afterward so the repo is back to normal:
 
 ```bash
-sed -i 's/^  replicas: 3 /  replicas: 2 /' k8s/users-deployment.yaml
+sed -i 's/replicas: 3/replicas: 2/' k8s/users-deployment.yaml
 git add k8s/users-deployment.yaml
 git commit -m "Revert demo: users-service back to 2 replicas"
 git push
