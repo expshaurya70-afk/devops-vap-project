@@ -54,12 +54,18 @@ def try_build(repo_path, dockerfile_content, image_tag):
     with open(dockerfile_path, "w") as f:
         f.write(dockerfile_content)
 
-    result = subprocess.run(
-        ["docker", "build", "-t", image_tag, repo_path],
-        capture_output=True,
-        text=True,
-        timeout=180,
-    )
+    try:
+        result = subprocess.run(
+            ["docker", "build", "-t", image_tag, repo_path],
+            capture_output=True,
+            text=True,
+            timeout=420,
+        )
+    except subprocess.TimeoutExpired:
+        return False, (
+            "docker build did not finish within 420 seconds. This usually means a "
+            "slow machine or network (base image pull, pip install), not a Dockerfile error."
+        )
     if result.returncode != 0:
         return False, result.stderr[-2000:]
 
