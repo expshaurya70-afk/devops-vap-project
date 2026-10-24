@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: users-service
 spec:
-  replicas: 2                     # run 2 copies for resilience — if one dies, the other keeps serving
+  replicas: 3                     # run 2 copies for resilience — if one dies, the other keeps serving
   selector:
     matchLabels:
       app: users-service
